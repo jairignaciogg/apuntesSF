@@ -1,0 +1,344 @@
+@RestResource(urlMapping='/SAP-SF/Pedidos')
+global with sharing class RICA_WS_Pedidos {
+
+    @httpPost
+    global static response PedidosPost(String inFechaPrev, String inFechaRep, List<String> lsInRutas, List<String> lsInClientes) {
+        System.debug('********* In inFechaPrev = '+inFechaPrev);
+        System.debug('********* In inFechaRep = '+inFechaRep);
+        System.debug('********* In lsInRutas = '+lsInRutas);
+        System.debug('********* In lsInClientes = '+lsInClientes);
+        
+        response response = new response();
+        List<pedidoskCls> PED_CAB = new List<pedidoskCls>();
+        List<pedidospCls> PED_POS = new List<pedidospCls>();
+        
+        List<PRV_Pedido_RICA__c> lsPedidos = new List<PRV_Pedido_RICA__c>();
+        List<PRV_Prod_Pedido__c> lsProdP = new List<PRV_Prod_Pedido__c>(); //PRV_Prod_Pedido__c
+        
+        Map<Id,String> mapPedName = new Map<Id,String>();
+        Map<Id,Ruta_de_Cliente__c> mapRutaClt = new Map<Id,Ruta_de_Cliente__c>();
+        Map<Id,PRV_Promocion__c> mapProm = new Map<Id,PRV_Promocion__c>();
+        Map<Id,User> mapUser = new Map<Id,User>();
+        
+
+        Set<Id> idsPedidos = new Set<Id>();
+        Set<Id> idsPedidos2 = new Set<Id>();	//pedidos Pendientes
+        Set<Id> idsRutaClt = new Set<Id>();       //Ruta_de_Cliente__c
+        Set<Id> idsProm = new Set<Id>();          //PRV_Promocion__c
+        Set<Id> idsUser = new Set<Id>();          //User
+        
+        try{
+
+        //Begin Query
+        String query = 'SELECT Id, Name, Fecha_de_Entrega__c, Ruta_Cliente_lk__c, Motivo_de_Pedido__c, Fecha_Preventa_SAP__c, Estatus_de_Pedido__c, ';
+        query += 'Promocion_lk__c, Monto_Tot_Pedido__c, Num_Empleado_SAP__c, Tipo_de_Pedido_PList__c, CreatedById, CreatedDate, Id_App__c FROM PRV_Pedido_RICA__c WHERE '; //ID.MOD:20190513
+        query += 'Pendiente_a_SAP_chk__c = true ';
+        //Fecha Preventa
+        if (inFechaPrev != '') {
+            Date FechaPrev = obtieneFecha(inFechaPrev);
+            query += 'AND Fecha_Preventa_SAP__c =: FechaPrev ';            
+        }
+        //Fecha Reparto
+        if (inFechaRep != '') {
+            Date FechaRep = obtieneFecha(inFechaRep);
+            query += 'AND Fecha_de_Entrega__c =: FechaRep ';            
+        }
+        if (lsInRutas.size() > 0) {
+            query += 'AND Ruta_Name_Unico_Fx__c =:lsInRutas ';            
+        }
+        if (lsInClientes.size() > 0) {
+            query += 'AND Cuenta_Num_Cliente_Fx__c =: lsInClientes ';            
+        }
+        query += 'LIMIT 500';
+        System.debug('********* Query Pedidos = '+query);
+        //End Query
+
+        System.debug('********* For In SELECT PRV_Pedido_RICA__c');
+        for (PRV_Pedido_RICA__c oPedido : Database.query(query)){
+                                            System.debug('********** oPedido = '+oPedido);
+                                            lsPedidos.add(oPedido);
+                                            idsPedidos.add(oPedido.Id);
+                                            idsRutaClt.add(oPedido.Ruta_Cliente_lk__c);
+                                            idsProm.add(oPedido.Promocion_lk__c);
+                                            idsUser.add(oPedido.CreatedById);
+                                            mapPedName.put(oPedido.Id, oPedido.Name);
+        }
+                
+        System.debug('************* For Out SELECT PRV_Pedido_RICA__c');
+        System.debug('************* lsPedidos = '+lsPedidos);
+        System.debug('************* idsPedidos = '+idsPedidos);
+        System.debug('************* idsRutaClt = '+idsRutaClt);
+        System.debug('************* idsProm = '+idsProm);
+        System.debug('************* idsUser = '+idsUser);
+        System.debug('************* mapPedName = '+mapPedName);
+            
+         System.debug('************* Begin COUNT PRV_Pedido_RICA__c');
+        //se va a revisar si aun existen pedidos pendientes por bajar        
+        String query2 = 'SELECT Id FROM PRV_Pedido_RICA__c WHERE Pendiente_a_SAP_chk__c = true AND Id NOT IN :idsPedidos ';
+         //Fecha Preventa
+        if (inFechaPrev != '') {
+            Date FechaPrev = obtieneFecha(inFechaPrev);
+            query2 += 'AND Fecha_Preventa_SAP__c =: FechaPrev ';            
+        }
+        //Fecha Reparto
+        if (inFechaRep != '') {
+            Date FechaRep = obtieneFecha(inFechaRep);
+            query2 += 'AND Fecha_de_Entrega__c =: FechaRep ';            
+        }
+        if (lsInRutas.size() > 0) {
+            query2 += 'AND Ruta_Name_Unico_Fx__c =:lsInRutas ';            
+        }
+        if (lsInClientes.size() > 0) {
+            query2 += 'AND Cuenta_Num_Cliente_Fx__c =: lsInClientes ';            
+        }
+        query2 += 'LIMIT 500';
+        System.debug('********* Query Pedidos Pendientes = '+query2);
+        
+        for (PRV_Pedido_RICA__c oPedido : Database.query(query2)){
+                                            System.debug('********** oPedido = '+oPedido);                                            
+                                            idsPedidos2.add(oPedido.Id);                                         
+        }
+        System.debug('********* Pedidos Pendientes = '+idsPedidos2.size());
+        response.MORE = idsPedidos2.size();           
+            
+        System.debug('************* End COUNT PRV_Pedido_RICA__c');
+        
+        if (idsPedidos.size() > 0) {
+
+            //Map PRV_Prod_Pedido__c            
+            System.debug('************* For In  SELECT PRV_Prod_Pedido__c');
+            for (PRV_Prod_Pedido__c oProdP : [SELECT Id, Name, Codigo_Producto_fx__c, Tipo_de_Posicion__c, Cantidad__c, UM__c, Forma_de_pago__c, Pedido_M__c FROM PRV_Prod_Pedido__c 
+                                                    WHERE Pedido_M__c =: idsPedidos AND Pendiente_a_SAP_chk__c = true LIMIT 50000]) {
+                lsProdP.add(oProdP);
+            }
+            System.debug('************* For Out SELECT PRV_Prod_Pedido__c');
+            System.debug('************* lsProdP = '+lsProdP);
+
+           // Map Ruta_de_Cliente__c
+            if (idsRutaClt.size() > 0) {
+                System.debug('************* For In  SELECT Ruta_de_Cliente__c');
+                for (Ruta_de_Cliente__c oRutaClt : [SELECT Id, Name, Num_Cliente_Fx__c, Condicion_de_Pago__c FROM Ruta_de_Cliente__c WHERE Id =: idsRutaClt LIMIT 10000]) {
+                    mapRutaClt.put(oRutaClt.id, oRutaClt);
+                }
+                System.debug('************* For Out SELECT Ruta_de_Cliente__c');
+                System.debug('************* mapRutaClt = '+mapRutaClt);
+            }
+
+            // Map PRV_Promocion__c
+            if (idsProm.size() > 0) {
+                System.debug('************* For In  SELECT PRV_Promocion__c');
+                for (PRV_Promocion__c oProm : [SELECT Id, Name, Folio_RICA__c FROM PRV_Promocion__c WHERE Id =: idsProm LIMIT 10000]) {
+                    mapProm.put(oProm.id, oProm);
+                }
+                System.debug('************* For Out SELECT PRV_Promocion__c');
+                System.debug('************* mapProm = '+mapProm);
+            }
+
+            // Map User
+            if (idsUser.size() > 0) {
+                System.debug('************* For In  SELECT User');
+                for (User oUser : [SELECT Id, Name, Email FROM User WHERE Id =: idsUser LIMIT 10000]) {
+                    mapUser.put(oUser.id, oUser);
+                }
+                System.debug('************* For Out SELECT User');
+                System.debug('************* mapUser = '+mapUser);
+            }
+
+            //PedidoskCls            
+
+            Ruta_de_Cliente__c oRutaClt = new Ruta_de_Cliente__c();
+            PRV_Promocion__c oProm = new PRV_Promocion__c();
+            User oUser = new User();
+            
+            System.debug('************* For lsPedidos');
+            for (PRV_Pedido_RICA__c oPedido : lsPedidos) {
+                pedidoskCls pedidoK = new pedidoskCls();
+
+                pedidoK.BSTKD       = oPedido.Name;
+                pedidoK.REQ_DATE_H  = oPedido.Fecha_de_Entrega__c;
+                pedidoK.AUGRU       = oPedido.Motivo_de_Pedido__c;
+                pedidoK.PURCH_DATE  = oPedido.Fecha_Preventa_SAP__c;
+                pedidoK.ID_APP      = oPedido.Id_App__c;    //ID.MOD:20190513
+                //pedidoK.INBLOQ      = oPedido.Ind_Borrado; ?
+                if (oPedido.Estatus_de_Pedido__c == 'Cancelado') { pedidoK.INBLOQ      = 'X';
+                }
+                switch on oPedido.Estatus_de_Pedido__c {
+                   when 'Procesado'{
+                       pedidoK.STPED       = 'P';
+                   }
+                   when 'Bloqueado'{
+                       pedidoK.STPED       = 'B';
+                   }
+                   when 'Cancelado'{
+                       pedidoK.STPED       = 'C';
+                   }
+                   when else {
+                       pedidoK.STPED       = '';
+                   }
+                }
+                pedidoK.NETWR       = oPedido.Monto_Tot_Pedido__c;
+                pedidoK.PROMOTOR    = oPedido.Num_Empleado_SAP__c;
+                pedidoK.CLDOC       = oPedido.Tipo_de_Pedido_PList__c;
+                pedidoK.PEDIDO_SF   = oPedido.Id;
+                pedidoK.HRPSF		= oPedido.CreatedDate.timeGMT();
+                
+                oRutaClt = mapRutaClt.get(oPedido.Ruta_Cliente_lk__c);
+                if (oRutaClt != null) {
+                    String[] nameURutaClt = oRutaClt.Name.split('-');
+                    System.debug('************* nameURutaClt = '+nameURutaClt);
+                    pedidoK.VKGRP       = nameURutaClt[1];          
+                    pedidoK.WERKS       = nameURutaClt[0];
+                    pedidoK.KUNNR       = oRutaClt.Num_Cliente_Fx__c;
+                    pedidoK.ZTERM       = oRutaClt.Condicion_de_Pago__c;
+                }
+                
+                oProm = mapProm.get(oPedido.Promocion_lk__c);
+                if (oProm != null) {
+                    pedidoK.NPROM       = oProm.Folio_RICA__c;
+                    pedidoK.PROM_ID     = oProm.Id;
+                }
+
+                oUser = mapUser.get(oPedido.CreatedById);
+                if (oUser != null) {
+                    pedidoK.MAIL_PROM   = oUser.Email;                   
+                }	                
+                
+               	PED_CAB.add(pedidoK);
+                pedidoK = null;
+            }
+            System.debug('********** PEDIDO = '+PED_CAB);
+            response.PED_CAB = PED_CAB;
+            System.debug('************* Pedidos Cab = '+response.PED_CAB);
+            
+            //pedidospCls
+           
+            for (PRV_Prod_Pedido__c oProdP : lsProdP) {
+                pedidospCls pedidoP = new pedidospCls();
+
+                pedidoP.BSTKD   = mapPedName.get(oProdP.Pedido_M__c);
+                pedidoP.MATNR   = oProdP.Codigo_Producto_fx__c;
+                pedidoP.PSTYV   = oProdP.Tipo_de_Posicion__c;
+                pedidoP.KWMENG  = oProdP.Cantidad__c;
+                pedidoP.VRKME   = oProdP.UM__c;
+                pedidoP.ID_SF   = oProdP.Id;
+                if (oProdP.Forma_de_pago__c == 'Contado') {
+                   pedidoP.CONDP = '01';
+                }else {
+                    pedidoP.CONDP = '02';
+                }                                				
+                PED_POS.add(pedidoP);
+                pedidoP = null;
+            }
+            response.PED_POS = PED_POS;
+            System.debug('************* Pedidos Pos = '+response.PED_POS);
+        }else{
+            response.MSG = 'No se Encontraron Pedidos';
+        }        
+        }catch(Exception e){
+            System.debug('Mensaje de error: ' + e.getMessage());
+            System.debug('Linea: ' + e.getLineNumber());
+            response.MSG = 'Mensaje de error: ' + e.getMessage() + ', Linea: ' + e.getLineNumber();
+            
+        }   
+		return response;
+    }
+
+    @httpPut
+    global static String PedidosPut(List<Id> lsInCabId, List<Id> lsInPosId){
+        System.debug('************* lsInCabId = '+lsInCabId);
+        System.debug('************* lsInPosId = '+lsInPosId);
+		String response;
+        try {
+           	response = 'Se Actualizaron en SF: ';
+            List<PRV_Pedido_RICA__c> lsPedidos = new List<PRV_Pedido_RICA__c>();
+            List<PRV_Prod_Pedido__c> lsProdP = new List<PRV_Prod_Pedido__c>();
+
+            System.debug('********* For In SELECT PRV_Pedido_RICA__c');
+            for (PRV_Pedido_RICA__c oPedido : [SELECT Id, Name, Pendiente_a_SAP_chk__c FROM PRV_Pedido_RICA__c WHERE Id =: lsInCabId AND Pendiente_a_SAP_chk__c = true LIMIT 5000]) {
+                                                    oPedido.Pendiente_a_SAP_chk__c  = false;
+                                                    lsPedidos.add(oPedido);
+            }
+            System.debug('********* For Out SELECT PRV_Pedido_RICA__c');
+
+
+            System.debug('************* For In  SELECT PRV_Prod_Pedido__c');
+            for (PRV_Prod_Pedido__c oProdP : [SELECT Id, Name, Pendiente_a_SAP_chk__c  FROM PRV_Prod_Pedido__c 
+                                                    WHERE Id =: lsInPosId AND Pendiente_a_SAP_chk__c = true LIMIT 50000]) {
+                                                        oProdP.Pendiente_a_SAP_chk__c = false;
+                                                        lsProdP.add(oProdP);
+            }
+            System.debug('************* For In  SELECT PRV_Prod_Pedido__c');
+            
+            System.debug('********** lsPedidos = '+lsPedidos);
+            if (lsPedidos.size() > 0) {           
+            try { Update lsPedidos;
+                    response += lsPedidos.size()+' Pedidos. ';
+                } catch (DmlException e) { response += '0 Pedidos. ';       
+                }
+            }else {
+            response += 'No se recibió Pedidos. '; 
+            }
+
+            System.debug('********** lsProdP = '+lsProdP);
+            if (lsProdP.size() > 0) {
+            try { Update lsProdP;
+                response += lsProdP.size()+' Productos de Pedidos.';
+                } catch (DmlException e) { response += '0 Productos de Pedidos.';
+                }
+            }else {
+            response += 'No se recibió Productos de Pedidos.'; 
+            }               
+        } catch(Exception e){ response = 'Mensaje de error: ' + e.getMessage() + ', Linea: ' + e.getLineNumber();
+        }
+        return response;
+        
+    }
+
+    public static Date obtieneFecha(String fecha){
+        Integer anio = Integer.valueOf(fecha.substring(0,4));
+        Integer mes = Integer.valueOf(fecha.substring(5, 7));
+        Integer dia = Integer.valueOf(fecha.substring(8));
+        Date dFecha = Date.newInstance(anio, mes, dia);
+        return dFecha;
+    }
+
+    global class response{
+        public List<pedidoskCls> PED_CAB;
+        public List<pedidospCls> PED_POS;
+        public String MSG;
+        public Integer MORE;
+    }
+
+    public class pedidoskCls{
+        public String   BSTKD;            //Name
+        public Date     REQ_DATE_H;       //Fecha_de_Entrega__c
+        public String   WERKS;            //CENTRO
+        public String   VKGRP;            //RUTA
+        public String   KUNNR;            //Num_Cliente_Fx__c (Ruta de Cliente)
+        public String   AUGRU;            //Motivo_de_Pedido__c
+        public String   ZTERM;            //Condicion_de_Pago__c(Ruta de Cliente)
+        public Date     PURCH_DATE;       //Fecha_Preventa_SAP__c
+        public String   STPED;            //Estatus_de_Pedido__c
+        public String   INBLOQ;           //Ind_Borrado ?
+        public String   NPROM;            //Folio_RICA__c (Promocion)
+        public Decimal  NETWR;           //Monto_Tot_Pedido__c
+        public String   PROM_ID;          //Id (Promocion)
+        public String   PROMOTOR;         //Num_Empleado_SAP__c
+        public String   CLDOC;            //Tipo_de_Pedido_PList__c
+        public String   PEDIDO_SF;        //Id
+        public String   MAIL_PROM;        //Email (User)
+        public Time		HRPSF;			  //Hora de Creacion
+        public String   ID_APP;           //ID APP      "ID.MOD:20190513"
+    }
+
+    public class pedidospCls{
+        public String   BSTKD;            //Nombre Pedido
+        public String   MATNR;            //Codigo_Producto_fx__c (Producto de Pedido)
+        public String   PSTYV;            //Tipo_de_Posicion__c (Producto de Pedido)
+        public Decimal  KWMENG;           //Cantidad__c (Producto de Pedido)
+        public String   VRKME;            //UM__c (Producto de Pedido)
+        public String   ID_SF;            //Id (Producto de Pedido)
+        public String   CONDP;            //Forma_de_pago__c (Producto de Pedido)
+    }
+
+}
