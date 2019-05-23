@@ -1,0 +1,1 @@
+SELECT Id FROM PRV_Prod_de_Portafolio__c WHERE Activo__c = TRUE AND LastModifiedDate < 2019-04-04T00:00:00.000Z AND ID_Portafolio__c IN (SELECT Portafolio_M__c FROM PRV_Portafolio_de_Cliente__c WHERE Ruta_de_Cliente_M__r.Viernes__c = TRUE AND Ruta_de_Cliente_M__r.Tipo_de_Ruta_Fx__c = 'PREVENTA')
