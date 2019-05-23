@@ -1,0 +1,27 @@
+@RestResource(urlMapping='/SAP-SF/GenInf')
+global with sharing class RICA_WS_GenInfo {
+
+  @HttpPost
+    global static List<String> doPost(String fecha, List<String> procesos, List<String> sucursales, List<String> rutas){
+        System.debug('********fecha: ' +fecha);
+        System.debug('********procesos: ' +procesos);
+        System.debug('********sucursales: ' +sucursales);
+        System.debug('********rutas: ' +rutas);
+        
+            List<String> S_rutas = new List<String>();
+            List<String> canales = new List<String>();
+            List<String> modelos = new List<String>();
+            List<String> rutasIds = new List<String>();
+        if ( rutas.size() > 0 ){
+            for( Ruta__c oRuta : [Select Id, Name_Unico__c from Ruta__c where Name_Unico__c IN : rutas LIMIT 10000]){ rutasIds.add( oRuta.Id );
+                  S_rutas.add( oRuta.Name_Unico__c );}
+            System.debug('rutas ID '+rutasIds);
+            System.debug('rutas Name_Unico__c '+S_rutas);
+        }
+            
+        return RICA_GeneradorInformacion.ejecutarProcesos( procesos, fecha, sucursales, S_rutas, canales, modelos, rutasIds );
+        //return 'Se generaron Procesos';
+               
+        
+    }
+}
