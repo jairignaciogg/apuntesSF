@@ -1,0 +1,25 @@
+<------------------------Comandos SFDX--------------------------------->
+
+Force:auth:web:login ||	-d Default -a Alias ||	Login a Org 
+Force --help ||	Ayuda
+Force:doc:commands:listforce	||	Todos los comandos disponibles
+force:auth:web:login -r https://test.salesforce.com -a FullSandbox	||	Login Test
+sfdx force:project:create -n geolocation	||	Creat Proyecto geolocation
+sfdx force:org:create -s -f config/project-scratch-def.json -a GeoAppScratch	||	Create a scratch org with the alias GeoAppScratch
+sfdx force:org:open ||	Abrir org
+sfdx force:user:permset:assign -n Geolocation	||	assign this permission set to our user
+sfdx force:source:pull	||	Sync the changes you made in the scratch org with your local project
+sfdx force:data:tree:export -q "SELECT Name, Location__Latitude__s, Location__Longitude__s FROM Account WHERE Location__Latitude__s != NULL AND Location__Longitude__s != NULL" -d ./data	||	Export some sample data
+sfdx force:data:tree:import --sobjecttreefiles data/Account.json	||	Import Data
+		
+sfdx force:apex:class:create -n AccountController -d force-app/main/default/classes	||	Create a class AccountController and a directory
+sfdx force:source:push	||	push (synchronize) your new code to the scratch org
+sfdx force:lightning:component:create -n AccountLocator -d force-app/main/default/aura	||	reate the Lightning component in the aura folder
+		
+<-------------------------Comandos GIT--------------------------------->
+
+git init ||	Iniciar GIT
+git remote add origin <github ssh url> ||	Agregar origen al repo
+git add -A ||	Agregar cambios
+git commit -m || "Add custom object and permset"	Agregar commint con mensaje
+git push origin master ||	Mandar cambios al origen
