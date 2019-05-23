@@ -1,0 +1,306 @@
+@RestResource(urlMapping='/SAP-SF/Consignaciones')
+global with sharing class RICA_WS_Consignaciones {
+
+  @HttpPut
+  global static String doPut(List<consCls> lstInCons, List<prodConsCls> lstInProdCons){
+    String response;
+    System.System.debug('**** RICA_WS_Consignaciones doPut ' + lstInCons);    
+    List<String> lstRtaClte = new List<String>();
+    List<String> lstProdPort = new List<String>();
+    
+    List<PRV_Contrato_RICA__c> lstUpCons = new List<PRV_Contrato_RICA__c>();
+    Set<PRV_Contrato_RICA__c> setUpCons = new Set<PRV_Contrato_RICA__c>();
+    List<PRV_Prod_Cto_Consig__c> lstUpProdCons = new List<PRV_Prod_Cto_Consig__c>();
+    List<REP_Entrega_de_Pedido__c> lstUpEnt = new List<REP_Entrega_de_Pedido__c>();
+    
+    Map<String, Id> mapRtaClte = new Map<String, Id>();
+    Map<String, Id> mapProdPort = new Map<String, Id>();
+    Map<String, PRV_Prod_de_Portafolio__c> mapProdPortO = new Map<String, PRV_Prod_de_Portafolio__c>();
+    Map<String, Id> mapProd = new Map<String, Id>();
+    Map<String, Id> mapRT = new Map<String, Id>();
+
+    Map<String, Id> mapCons = new Map<String, Id>();
+    Map<String, Id> mapProdCons = new Map<String, Id>();
+    Map<String, Id> mapEnt = new Map<String, Id>();
+    Map<String, String> mapEntRtaClte = new Map<String, String>();
+      
+    map<String, Date> mapFechaEnt = new Map<String, Date>();
+      
+    Set<String> setMateriales = new Set<String>();    
+
+    for (RecordType oRT : [SELECT Id, Name, DeveloperName FROM RecordType WHERE ( SObjectType = 'PRV_Contrato_RICA__c' OR SObjectType = 'REP_Entrega_de_Pedido__c' )]) {
+           mapRT.put(oRT.DeveloperName,oRT.Id);
+    }
+
+    try {
+       
+      if (lstInCons.size()>0) {
+        //List de Ruta de Cliente
+         for (consCls oCons : lstInCons) {           
+             lstRtaClte.add(oCons.RUTA_CTE);
+             mapEntRtaClte.put(oCons.ENTREGA,oCons.RUTA_CTE);
+         }
+
+        //List de Productos de Portafolio
+        for (prodConsCls oProdCons : lstInProdCons) {
+           lstProdPort.add(oProdCons.PROD_PORT);
+           setMateriales.add(oProdCons.MATNR);
+        }
+      //map con Ids de Rutas de Clientes
+        if (lstRtaClte.size()>0) {
+           for (Ruta_de_Cliente__c oRtaClte : [SELECT Id, Name_Unico__c FROM Ruta_de_Cliente__c WHERE Name_Unico__c =: lstRtaClte 
+                                                AND Activa__c = TRUE AND Activa_por_Vigencia_Fx__c = TRUE LIMIT 10000 ]) {                                                                
+              mapRtaClte.put(oRtaClte.Name_Unico__c, oRtaClte.Id);
+           }
+        }
+                  
+      //map con Ids de Productos Rica y Productos de Portafolio
+        if (lstProdPort.size()>0) {
+           for (PRV_Prod_de_Portafolio__c oProdPort : [SELECT Id, Name, Name_Unico__c, Producto_RICA_M__c, Precio_de_Venta__c, Monto_Iva__c, IEPS__c
+                                                       FROM PRV_Prod_de_Portafolio__c WHERE Name_Unico__c =: lstProdPort LIMIT 10000]) {
+             mapProdPort.put(oProdPort.Name_Unico__c, oProdPort.Id);
+             mapProdPortO.put(oProdPort.Name_Unico__c, oProdPort);
+             mapProd.put(oProdPort.Name, oProdPort.Producto_RICA_M__c);
+           }
+        }
+        System.debug('**** Consignaciones a Insertar lstInCons: '+ lstInCons);
+        for (consCls oCons : lstInCons) {           
+            PRV_Contrato_RICA__c tmpCons = new PRV_Contrato_RICA__c();
+            
+            tmpCons.Name_Unico__c = oCons.ENTREGA;
+            tmpCons.No_de_Ruta__c = mapRtaClte.get(oCons.RUTA_CTE);
+            tmpCons.Fecha_Inicio__c = obtieneFecha(oCons.FECHAI);
+            tmpCons.Etapa_de_Solicitud__c = oCons.ETAPA;
+            tmpCons.Fecha_de_Solicitud__c = obtieneFecha(oCons.FECHAS);
+            tmpCons.Activo__c = oCons.ACTIVO;
+            tmpCons.Fecha_Fin__c =obtieneFecha(oCons.FECHAF);
+            tmpCons.RecordTypeId = mapRT.get('Consignacion');	//Consignaciones
+
+            lstUpCons.add(tmpCons);
+            mapFechaEnt.put(tmpCons.Name_Unico__c, tmpCons.Fecha_Inicio__c);
+         }
+         System.debug('**** Consignaciones a Insertar lstUpCons: '+ lstUpCons);
+          
+         if (lstUpCons.size()>0) {             
+            mapCons = insertaConsignaciones(lstUpCons);
+         }
+		 System.debug('**** mapCons: '+ mapCons);
+         if (!mapCons.isEmpty()) {
+            
+            System.debug('**** Productos Portafolio mapProdPort: '+ mapProdPort.size());
+            System.debug('**** Productos Portafolio mapProdPort: '+ mapProdPort);
+             
+            System.debug('**** Productos de Consignacion lstInProdCons: '+ lstInProdCons.size());
+            System.debug('**** Productos de Consignacion lstInProdCons: '+ lstInProdCons);                          
+            for (prodConsCls oProdCons : lstInProdCons) {
+              PRV_Prod_Cto_Consig__c tmpProdCons = new PRV_Prod_Cto_Consig__c();
+
+              tmpProdCons.PRV_Contrato_RICA_M__c = mapCons.get(oProdCons.ENTREGA);
+              tmpProdCons.ID_UNICO__c = oProdCons.PROD_CON;
+              tmpProdCons.Name = oProdCons.MATNR;
+              tmpProdCons.Producto_de_Portafolio_Lk__c = mapProdPort.get(oProdCons.PROD_PORT);
+              tmpProdCons.Producto_RICA_M__c = mapProd.get(oProdCons.MATNR);
+              tmpProdCons.Cantidad_de_cajas__c = oProdCons.CANTIDAD;
+              tmpProdCons.Precio_de_Producto_Consignado__c = oProdCons.PRECIO;
+              tmpProdCons.Monto_Iva_Prod_Consignacion__c = oProdCons.IVA;
+              tmpProdCons.Monto_IEPS_Prod_Consignacion__c = oProdCons.IEPS;
+              
+              //ajuste Precio actual              
+                if (mapProdPortO.containsKey(oProdCons.PROD_PORT)){
+                    PRV_Prod_de_Portafolio__c tProdPort = mapProdPortO.get(oProdCons.PROD_PORT);
+                    tmpProdCons.Producto_de_Portafolio_Lk__c = tProdPort.Id;
+                    tmpProdCons.Precio_de_Producto_Consignado__c = tProdPort.Precio_de_Venta__c;
+                    tmpProdCons.Monto_Iva_Prod_Consignacion__c = tProdPort.Monto_Iva__c;
+                    tmpProdCons.Monto_IEPS_Prod_Consignacion__c = tProdPort.IEPS__c;
+                }
+			  
+              lstUpProdCons.add(tmpProdCons);
+            }
+            System.debug('**** Productos de Consignaciones a Insertar: '+ lstUpProdCons.size());
+            System.debug('**** Productos de Consignaciones a Insertar: '+ lstUpProdCons);
+
+            if (lstUpCons.size()>0) {
+              mapProdCons = insertaProdConsignaciones(lstUpProdCons);
+            }
+
+          //map con Entregas
+
+          if (mapCons.keySet().size()>0) {
+           /*for (REP_Entrega_de_Pedido__c oEntrega : [SELECT Id, Folio_de_Entrega_SAP__c FROM REP_Entrega_de_Pedido__c
+                                                      WHERE Folio_de_Entrega_SAP__c =: mapCons.keySet() LIMIT 10000]) {
+              oEntrega.Contrato__c = mapCons.get(oEntrega.Folio_de_Entrega_SAP__c);
+              oEntrega.RecordTypeId = mapRT.get('Entrega_Inicial');
+              lstUpEnt.add(oEntrega);
+           }*/
+              for (String sEntrega : mapCons.keySet()){
+                  REP_Entrega_de_Pedido__c tmpEntrega = new REP_Entrega_de_Pedido__c();
+                  
+                  tmpEntrega.Folio_de_Entrega_SAP__c = sEntrega;
+                  tmpEntrega.Contrato__c = mapCons.get(tmpEntrega.Folio_de_Entrega_SAP__c);
+                  tmpEntrega.RecordTypeId = mapRT.get('Entrega_Inicial');
+                  // tmpEntrega.Fecha_de_Entrega__c = mapFechaEnt.get(sEntrega);
+                  tmpEntrega.Fecha_de_Entrega__c = Date.today();
+                  tmpEntrega.Ruta_Cliente_Lk__c = mapRtaClte.get(mapEntRtaClte.get(sEntrega));
+                  tmpEntrega.Tipo_de_Pedido__c = 'ZKA1';
+                  tmpEntrega.Estatus_de_Entrega__c = 'Confirmada';
+                  lstUpEnt.add(tmpEntrega);
+              }
+
+            if (lstUpEnt.size()>0) {
+               //mapEnt = actualizaEntregas(lstUpEnt);
+               mapEnt = upsertEntregas(lstUpEnt);
+            }
+          }
+
+         }
+         response = 'Se insertaron: ' + mapCons.size() + ' Consignaciones y ' + mapProdCons.size() + ' Productos de Consignacion y se actualizaron ' + mapEnt.size() + ' Entregas';       
+      }else {
+         response = 'No se recibieron datos';
+      }      
+
+    } catch (Exception e) {
+      System.debug('Mensaje de error: ' + e.getMessage());
+      System.debug('Linea: ' + e.getLineNumber());
+      response = 'Mensaje de error: ' + e.getMessage() + ', Linea: ' + e.getLineNumber();      
+    }
+      
+      return response;
+
+  }
+
+  public static Map<String, Id> insertaConsignaciones(List<PRV_Contrato_RICA__c> lstUpCons2){
+    Schema.SObjectField f = PRV_Contrato_RICA__c.Fields.Name_Unico__c;          
+    System.System.debug('**** Consignaciones a Insertar: '+ lstUpCons2.size());
+    System.System.debug('**** Consignaciones a Insertar lstUpCons2: '+ lstUpCons2);
+    Database.UpsertResult[] srList = Database.upsert(lstUpCons2, f, false);
+    Map<String, Id> mapUpCons = new Map<String, Id>();
+    Integer i = 0;
+    for (Database.UpsertResult sr : srList) {
+            if (sr.isSuccess()) {
+                // Operation was successful, so get the ID of the record that was processed
+                System.debug('***-Consignacion Insertada: ' + sr);
+                mapUpCons.put(lstUpCons2[i].Name_Unico__c,sr.getId());
+            }
+            else {
+                // Operation failed, so get all errors                
+                for(Database.Error err : sr.getErrors()) {
+                    System.debug('****The following error has occurred.');                    
+                    System.debug(err.getStatusCode() + ': ' + err.getMessage());
+                    System.debug('****Campos de la Consignacion con error: ' + err.getFields());
+                }
+            }
+        i++;
+        }
+    return mapUpCons;
+  }
+
+  public static Map<String, Id> insertaProdConsignaciones(List<PRV_Prod_Cto_Consig__c> lstUpProdCons2){
+    Schema.SObjectField f = PRV_Prod_Cto_Consig__c.Fields.ID_UNICO__c;
+    System.System.debug('**** Producto de Consignaciones a Insertadas: '+ lstUpProdCons2.size());
+      System.System.debug('**** Producto de Consignaciones a Insertadas: '+ lstUpProdCons2);
+    List<Database.UpsertResult> srList = Database.upsert(lstUpProdCons2, f, false);
+    
+    Map<String, Id> mapUpProdCons = new Map<String, Id>();
+    Integer i = 0;
+    for (Database.UpsertResult sr : srList) {
+            if (sr.isSuccess()) {
+                // Operation was successful, so get the ID of the record that was processed
+                System.debug('***-Productos de Consignacion Insertado: ' + sr);
+                mapUpProdCons.put(lstUpProdCons2[i].ID_UNICO__c, sr.getId());
+            }
+            else {
+                // Operation failed, so get all errors                
+                for(Database.Error err : sr.getErrors()) {
+                    System.debug('****The following error has occurred.');                    
+                    System.debug(err.getStatusCode() + ': ' + err.getMessage());
+                    System.debug('****Campos del Producto de Consignacion con error: ' + err.getFields());
+                }
+            }
+        i++;
+        }
+    return mapUpProdCons;
+  }
+
+  /*public static Map<String, Id> actualizaEntregas(List<REP_Entrega_de_Pedido__c> lstUpEnt2){
+    List< Database.SaveResult> srList = Database.update(lstUpEnt2, false);
+    System.System.debug('**** Entregas a Actualizadas: '+ lstUpEnt2);
+    Map<String, Id> mapEnt = new Map<String, Id>();
+    Integer i = 0;
+    for (Database.SaveResult sr : srList) {
+            if (sr.isSuccess()) {
+                // Operation was successful, so get the ID of the record that was processed
+                System.debug('***-Entregas Actalizadas: ' + sr);
+                mapEnt.put(lstUpEnt2[i].Folio_de_Entrega_SAP__c, sr.getId());
+            }
+            else {
+                // Operation failed, so get all errors                
+                for(Database.Error err : sr.getErrors()) {
+                    System.debug('****The following error has occurred.');                    
+                    System.debug(err.getStatusCode() + ': ' + err.getMessage());
+                    System.debug('****Campos de la Entrega con error: ' + err.getFields());
+                }
+            }
+        i++;
+        }
+    return mapEnt;
+  }*/
+    
+    
+   public static Map<String, Id> upsertEntregas(List<REP_Entrega_de_Pedido__c> lstUpEnt2){
+    Schema.SObjectField f = REP_Entrega_de_Pedido__c.Fields.Folio_de_Entrega_SAP__c;
+    System.System.debug('**** Producto de Consignaciones a Insertadas: '+ lstUpEnt2.size());
+      System.System.debug('**** Producto de Consignaciones a Insertadas: '+ lstUpEnt2);
+    List<Database.UpsertResult> srList = Database.upsert(lstUpEnt2, f, false);
+    
+    Map<String, Id> mapEnt = new Map<String, Id>();
+    Integer i = 0;
+    for (Database.UpsertResult sr : srList) {
+            if (sr.isSuccess()) {
+                // Operation was successful, so get the ID of the record that was processed
+                System.debug('***-Entregas Insertado: ' + sr);
+                mapEnt.put(lstUpEnt2[i].Folio_de_Entrega_SAP__c, sr.getId());
+            }
+            else {
+                // Operation failed, so get all errors                
+                for(Database.Error err : sr.getErrors()) {
+                    System.debug('****The following error has occurred.');                    
+                    System.debug(err.getStatusCode() + ': ' + err.getMessage());
+                    System.debug('****Campos de la Entrega con error: ' + err.getFields());
+                }
+            }
+        i++;
+        }
+    return mapEnt;
+  }
+    
+    
+  public static Date obtieneFecha(String fecha){
+        Integer anio = Integer.valueOf(fecha.substring(0,4));
+        Integer mes = Integer.valueOf(fecha.substring(5, 7));
+        Integer dia = Integer.valueOf(fecha.substring(8));
+        Date dFecha = Date.newInstance(anio, mes, dia);
+        return dFecha;
+  }
+
+  global class consCls{
+    public String ENTREGA;  //Entrega   Name_Unico__c   Name_Unico__c
+    public String RUTA_CTE; //Ruta de Cliente (Centro-Ruta-Cliente)   No_de_Ruta__c
+    public String   FECHAI;   //Fecha de inicio   Fecha_Inicio__c
+    public String ETAPA;    //Etapa de Solicitud    Etapa_de_Solicitud__c
+    public String   FECHAS;   //Fecha de Solicitud    Fecha_de_Solicitud__c
+    public Boolean ACTIVO;   //Activo    Activo__c
+    public String   FECHAF;   //Fecha Fin     Fecha_Fin__c
+  }
+
+  global class prodConsCls{
+    public String ENTREGA;    //Entrega   Name_Unico__c
+    public String PROD_CON;   //Name unico ID_UNICO__c
+    public String PROD_PORT;  //Producto de Portafolio Clave (RUTA-CLIENTE-MATERIAL) Producto_de_Portafolio_Lk__c
+    public String MATNR;      //Material  Producto_RICA_M__c
+    public Decimal CANTIDAD;  //Cantidad Cantidad_de_cajas__c
+    public Decimal PRECIO;    //Precio  Precio_Unitario__c
+    public Decimal IVA;       //IVA   Monto_Iva_Prod_Consignacion__c
+    public Decimal IEPS;      //IEPS  Monto_IEPS_Prod_Consignacion__c    
+  }
+
+}
