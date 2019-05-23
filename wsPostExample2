@@ -1,0 +1,480 @@
+@RestResource(urlMapping='/SAP-SF/bajarEntregas')
+global with sharing class RICA_WS_BajarEntregas {
+
+  @httpPost
+  global static response EntregasPost(String InFecha, List<String> lsInRutas, List<String> lsIdEntregas){
+    System.debug('********** RICA_WS_BajarEntregas********* ');
+    System.debug('********** RICA_WS_BajarEntregas********* inFecha: '+inFecha);
+    System.debug('********** RICA_WS_BajarEntregas********* lsInRutas: '+lsInRutas);
+
+    response response = new response();
+    List<entregasCls> entregas = new List<entregasCls>();
+
+    List<REP_Entrega_de_Pedido__c> lsEntregas = new List<REP_Entrega_de_Pedido__c>();
+    List<REP_Entrega_de_Pedido__c> lsEntregas2 = new List<REP_Entrega_de_Pedido__c>();
+    List<REP_Producto_Entrega__c> lsProdEntregas = new List<REP_Producto_Entrega__c>();
+    List<REP_Prod_de_Inventario_Final__c> lsInventario = new List<REP_Prod_de_Inventario_Final__c>();
+    List<REP_Operacion_de_Reparto__c> lsOperacionReparto = new List<REP_Operacion_de_Reparto__c>();
+    List<REP_Colaborador_en_Ruta__c> lsColab = new List<REP_Colaborador_en_Ruta__c>();
+    List<REP_Pago__c> lsPagos = new List<REP_Pago__c>();
+    List<REP_Devolucion__c> lsDevoluciones = new List<REP_Devolucion__c>();
+    List<Id> lsIdDevoluciones = new List<Id>();
+    List<String> idsAppPago = new List<String>(); //Pagos
+
+    Map<Id,Ruta_de_Cliente__c> mapRutaClt = new Map<Id,Ruta_de_Cliente__c>();
+    Map<Id,REP_Colaborador_en_Ruta__c> mapColab = new Map<Id,REP_Colaborador_en_Ruta__c>();
+    Map<Id,REP_Prod_de_Inventario_Final__c> mapInventario = new Map<Id,REP_Prod_de_Inventario_Final__c>();
+    Map<Id,Conexion__c> mapConexion = new Map<Id,Conexion__c>();
+    Map<Id,String> mapRT = new Map<Id,String>(); 
+
+    Set<Id> idsEntregas = new Set<Id>();    //Entregas
+    Set<Id> idsRutaClt = new Set<Id>();     //Ruta_de_Cliente__c
+    Set<Id> idsColab = new Set<Id>();       //REP_Colaborador_en_Ruta__c
+    Set<Id> idsOpera = new Set<Id>();       //REP_Operacion_de_Reparto__c
+    Set<Id> idsConexion = new Set<Id>();	  //Conexion__c
+    
+      
+    Date FechaP;
+	Date FechaRep;
+    Set<REP_Prod_de_Inventario_Final__c> setInventario = new Set<REP_Prod_de_Inventario_Final__c>();
+
+    try {
+      //Begin Query
+      String query = 'SELECT Id, RecordTypeId, Folio_de_Entrega_SAP__c, Name, Motivo_de_Cancelaci_n__c, Conexion_Lk__r.Fecha_de_Entrega__c, Fecha_de_Entrega__c, Tipo_de_Pedido__c, ';
+      query += 'Folio_Factura_SAP__c, Total_a_Pagar__c, Clave_Promocion_SAP__C, Fecha_de_Preventa__c, Ruta_Cliente_Lk__c, Colaborador_en_Ruta_Lk__c, Conexion_Lk__c, Estatus_de_Entrega__c ';
+      query += 'FROM REP_Entrega_de_Pedido__c WHERE ';
+      //Fecha Reparto
+      if (inFecha != '') {
+        FechaRep = obtieneFecha(inFecha);
+        //query += 'Fecha_de_Entrega__c =: FechaRep ';
+        query += '( Conexion_Lk__r.Fecha_de_Entrega__c =: FechaRep OR Fecha_de_Entrega__c =: FechaRep )';
+      }
+      //Lista de Rutas
+      if (lsInRutas.size() > 0) {
+         //query += 'AND Clave_Ruta_Cliente__c LIKE :lsInRutas ';
+         query += 'AND Ruta_Cliente_Lk__r.Name LIKE :lsInRutas ';                 
+      }
+      if (lsIdEntregas.size() > 0){
+      	query += 'AND Id NOT IN :lsIdEntregas ' ;     
+      }
+      //LIMIT
+      //query += 'LIMIT 500';
+      System.debug('********** RICA_WS_BajarEntregas********* query: '+query);
+      //END Query
+
+      //System.debug('********** RICA_WS_BajarEntregas*********FOR IN Select Entregas de Pedidos');
+      for (REP_Entrega_de_Pedido__c oEntregas : Database.query(query)) {
+         //System.debug('********** RICA_WS_BajarEntregas********* oEntregas: '+oEntregas);
+         lsEntregas.add(oEntregas);
+         if (oEntregas.Tipo_de_Pedido__c == 'ZKA1') {
+            lsEntregas2.add(oEntregas);
+         }
+         idsEntregas.add(oEntregas.Id);
+         idsRutaClt.add(oEntregas.Ruta_Cliente_Lk__c);
+         If (oEntregas.Tipo_de_Pedido__c != 'ZKA1') {
+            idsColab.add(oEntregas.Colaborador_en_Ruta_Lk__c);
+         }
+         //idsColab.add(oEntregas.Colaborador_en_Ruta_Lk__c); 
+         idsConexion.add(oEntregas.Conexion_Lk__c);
+      }
+      //System.debug('********** RICA_WS_BajarEntregas*********FOR OUT Select Entregas de Pedidos');
+      System.debug('********** RICA_WS_BajarEntregas********* lsEntregas2: '+lsEntregas2);
+      System.debug('********** RICA_WS_BajarEntregas********* idsEntregas: '+idsEntregas);
+      //System.debug('********** RICA_WS_BajarEntregas********* idsRutaClt: '+idsRutaClt);
+
+      if (idsEntregas.size() > 0) {
+        //Tipos de registros
+        for (RecordType oRT : [SELECT Id, Name, DeveloperName FROM RecordType WHERE SObjectType = 'REP_Entrega_de_Pedido__c']) {
+           mapRT.put(oRT.Id,oRT.DeveloperName);
+        }
+
+        //Lista de Productos de Entrega
+        //System.debug('********** RICA_WS_BajarEntregas*********FOR IN Select Productos de Entrega');
+        for (REP_Producto_Entrega__c oProdEntregas : [SELECT Id, Tipo_de_Posicion__c, Clave_de_Producto__c, Cantidad_Entregada__c, UM__c, Lote_de_Producto__c, Forma_de_Pago__c, 
+                                                      	Entrega_de_Pedido_Lk__c, Posicion_SAP_de_Entrega__c FROM REP_Producto_Entrega__c
+                                                        WHERE Entrega_de_Pedido_Lk__c = :lsEntregas ]) {
+          lsProdEntregas.add(oProdEntregas);         
+        }
+        //System.debug('********** RICA_WS_BajarEntregas*********FOR OUT Select Productos de Entrega');
+        //System.debug('********** RICA_WS_BajarEntregas********* lsProdEntregas: '+lsProdEntregas);
+
+        //Lista Devoluciones
+        System.debug('********** RICA_WS_BajarEntregas*********FOR IN Select Devoluciones');
+        for (REP_Devolucion__c oDevo : [SELECT Id, No_de_Material__r.Name, Cantidad_a_devolver_CF__c, UM__c, Entrega_de_Pedido_Lk__c FROM REP_Devolucion__c
+                                        WHERE Entrega_de_Pedido_Lk__c =: lsEntregas2 AND Fecha_de_Devolucion__c =: FechaRep ]) {
+            lsIdDevoluciones.add(oDevo.Entrega_de_Pedido_Lk__c);                                   
+            lsDevoluciones.add(oDevo);
+        }
+        System.debug('********** RICA_WS_BajarEntregas********* lsDevoluciones: '+lsDevoluciones);
+
+        //Lista de Pagos
+        //System.debug('********** RICA_WS_BajarEntregas*********FOR IN Select Pagos');
+        if (inFecha != '') {
+        	FechaP = obtieneFecha(inFecha);      
+      	}
+        for (REP_Pago__c oPagos : [SELECT Id, Name, Monto_a_Pagar__c, Monto_Total_de_Pedido_Fx__c, Fecha_de_Pago__c, Entrega_de_Pedido_Lk__c,
+                                   Producto_RICA__r.Name, Num_de_Prod_Pagados__c, idApp__c FROM REP_Pago__c
+                                  WHERE Entrega_de_Pedido_Lk__c = :lsEntregas AND Metodo_de_Pago__c <> 'Contrarecibo'
+                                  AND Fecha_de_Pago__c =: FechaP]) { 
+           if(!idsAppPago.contains(oPagos.idApp__c)){
+             idsAppPago.add(oPagos.idApp__c);   
+             lsPagos.add(oPagos);   
+           }          
+        }
+        //System.debug('********** RICA_WS_BajarEntregas*********FOR OUT Select Pagos');
+        //System.debug('********** RICA_WS_BajarEntregas********* lsPagos: '+lsPagos);
+
+        // Map Ruta_de_Cliente__c
+        if (idsRutaClt.size() > 0) {
+          //System.debug('********** RICA_WS_BajarEntregas*********FOR IN Rutas de Cliente');
+          for (Ruta_de_Cliente__c oRutaClt : [SELECT Id, Name, Cuenta_Name_Unico_Fx__c, Metodo_de_Pago_Principal__c FROM Ruta_de_Cliente__c
+                                                WHERE Id = :idsRutaClt]) {
+            mapRutaClt.put(oRutaClt.id, oRutaClt);        
+          }
+          //System.debug('********** RICA_WS_BajarEntregas*********FOR OUT Rutas de Cliente');
+          //System.debug('********** RICA_WS_BajarEntregas********* mapRutaClt = '+mapRutaClt);
+        }
+          
+        // Map Conexion__c
+        if (idsConexion.size() > 0) {
+          //System.debug('********** RICA_WS_BajarEntregas*********FOR IN Conexion');
+          for (Conexion__c oConexion : [SELECT Id, Name, Fecha_Hora_In__c FROM Conexion__c
+                                                WHERE Id = :idsConexion]) {
+            mapConexion.put(oConexion.id, oConexion);        
+          }
+          //System.debug('********** RICA_WS_BajarEntregas*********FOR OUT Conexion');
+          //System.debug('********** RICA_WS_BajarEntregas********* mapConexion = '+mapConexion);
+        } 
+
+        //Map REP_Colaborador_en_Ruta__c
+        if (idsColab.size() > 0) {
+          //System.debug('********** RICA_WS_BajarEntregas*********FOR IN Colaborador en Ruta');
+          for (REP_Colaborador_en_Ruta__c oColab : [SELECT Id, Numero_de_Nomina_Vendedor__c, Numero_de_Nomina_Ayudante1__c, Numero_de_Nomina_Ayudante2__c, Numero_de_Nomina_Ayudante3__c,
+                                                    Numero_de_Nomina_Ayudante4__c, Operacion_de_Reparto__c FROM REP_Colaborador_en_Ruta__c
+                                                    WHERE Id = :idsColab AND Activa__c = TRUE AND Fecha_y_Hora_de_Desactivacion__c = NULL LIMIT 1]) {
+             mapColab.put(oColab.id, oColab);
+             lsColab.add(oColab);
+             idsOpera.add(oColab.Operacion_de_Reparto__c);
+
+          }
+          //System.debug('********** RICA_WS_BajarEntregas*********FOR Out Colaborador en Ruta');
+          System.debug('********** RICA_WS_BajarEntregas********* mapColab = '+mapColab);
+          System.debug('********** RICA_WS_BajarEntregas********* idsOpera = '+idsOpera);
+            //en caso de que no encuentre colaborador activo dentro de idsColab
+            if (lsColab.size() < 1){
+            	for (REP_Colaborador_en_Ruta__c oColab : [SELECT Id, Numero_de_Nomina_Vendedor__c, Numero_de_Nomina_Ayudante1__c, Numero_de_Nomina_Ayudante2__c, Numero_de_Nomina_Ayudante3__c,
+                                                    Numero_de_Nomina_Ayudante4__c, Operacion_de_Reparto__c FROM REP_Colaborador_en_Ruta__c
+                                                    WHERE Id = :idsColab ORDER BY CreatedDate DESC LIMIT 1]) {
+             		mapColab.put(oColab.id, oColab);
+             		lsColab.add(oColab);
+             		idsOpera.add(oColab.Operacion_de_Reparto__c);
+
+          		}    
+            }
+        }        
+
+        
+        if (idsOpera.size() > 0) {
+          //List Operacion de Reparto
+          for (REP_Operacion_de_Reparto__c oOperacionR : [SELECT Id, Name, Fecha_de_Operacion__c, 
+                                                          (SELECT Id, Name, Numero_de_Nomina_Vendedor__c FROM Colaboradores_en_Ruta__r 
+                                                           	WHERE 
+                                                           	//Id = :idsColab AND 
+                                                           	Activa__c = TRUE AND Fecha_y_Hora_de_Desactivacion__c = NULL LIMIT 1)
+                                                          //ORDER BY CreatedDate DESC LIMIT 1) 
+                                                          FROM REP_Operacion_de_Reparto__c WHERE Id = :idsOpera AND Cierre_de_Entregas__c = TRUE]) {
+             lsOperacionReparto.add(oOperacionR);
+          }
+          //System.debug('********** RICA_WS_BajarEntregas********* lsOperacionReparto = '+lsOperacionReparto);
+          //List Prod de Inventario Final 
+          //System.debug('********** RICA_WS_BajarEntregas*********FOR In Prod de Inventario Final');
+           for (REP_Prod_de_Inventario_Final__c oInventario : [SELECT Id, Producto_RICA_Lk__r.Name, Devolucion_en_Caja__c, Devolucion_en_Pza_Bot__c, Operacion_de_Reparto_Lk__c
+                                                                FROM REP_Prod_de_Inventario_Final__c WHERE Operacion_de_Reparto_Lk__c = :idsOpera]) {
+              lsInventario.add(oInventario);
+           }
+           //System.debug('********** RICA_WS_BajarEntregas*********FOR Out Prod de Inventario Final');
+           //System.debug('********** RICA_WS_BajarEntregas********* lsInventario = '+lsInventario);
+        }
+
+        if (lsOperacionReparto.size()>0) {
+           //For Entregas      
+        List<entregasCls> tmpEntregas = new List<entregasCls>(); 
+        for (REP_Entrega_de_Pedido__c oEntregas : lsEntregas) {          
+		      entregasCls inEntregas = new entregasCls();
+          inEntregas.Id = oEntregas.Id;
+          //Tipo de registro
+          inEntregas.Tipo_de_Registro = mapRT.get(oEntregas.RecordTypeId);
+          inEntregas.Folio_de_Entrega_SAP = oEntregas.Folio_de_Entrega_SAP__c;
+          inEntregas.Name = oEntregas.Name;
+          inEntregas.Motivo_de_Cancelacion = oEntregas.Motivo_de_Cancelaci_n__c;
+          //inEntregas.Fecha_de_Entrega = oEntregas.Fecha_de_Entrega__c;
+            if(oEntregas.Tipo_de_Pedido__c != 'ZKA1'){
+             	inEntregas.Fecha_de_Entrega = oEntregas.Conexion_Lk__r.Fecha_de_Entrega__c;   
+            }else{
+                inEntregas.Fecha_de_Entrega = oEntregas.Fecha_de_Entrega__c;
+            }          
+          inEntregas.Tipo_de_Pedido = oEntregas.Tipo_de_Pedido__c;
+          inEntregas.Folio_Factura_SAP = oEntregas.Folio_Factura_SAP__c;
+          inEntregas.Total_a_Pagar = oEntregas.Total_a_Pagar__c;
+          inEntregas.Clave_Promocion_SAP = oEntregas.Clave_Promocion_SAP__C;
+          inEntregas.Fecha_de_Preventa = oEntregas.Fecha_de_Preventa__c;
+                      //temporal 
+          if (inEntregas.Tipo_de_Registro != 'Entrega_Externa') {
+             if (oEntregas.Estatus_de_Entrega__c == 'Pagada') {
+                oEntregas.Estatus_de_Entrega__c = 'En curso';
+             }
+          }     
+          inEntregas.Estatus_de_Entrega = oEntregas.Estatus_de_Entrega__c;
+
+          Ruta_de_Cliente__c oRutaClt = mapRutaClt.get(oEntregas.Ruta_Cliente_Lk__c);
+          if (oRutaClt != null) {
+            inEntregas.IdRutaClt = oRutaClt.Id;
+            String[] nameRutaClt = oRutaClt.Name.split('-');
+            if (nameRutaClt.size() > 0){
+            	inEntregas.werks = nameRutaClt[0];
+                inEntregas.vkgrp = nameRutaClt[1];
+            }
+            inEntregas.Cuenta_Name_Unico_Fx = oRutaClt.Cuenta_Name_Unico_Fx__c;
+            inEntregas.Metodo_de_Pago_Principal = oRutaClt.Metodo_de_Pago_Principal__c;
+          }
+            
+          Conexion__c oConexion = mapConexion.get(oEntregas.Conexion_Lk__c);
+            if (oConexion != null){
+                inEntregas.Fecha_Hora_In = oConexion.Fecha_Hora_In__c;
+            }
+		          
+          REP_Colaborador_en_Ruta__c oColab = mapColab.get(oEntregas.Colaborador_en_Ruta_Lk__c);
+          if (oColab != null) {
+            inEntregas.IdColaborador = oColab.Id;
+            inEntregas.Numero_de_Nomina_Vendedor = oColab.Numero_de_Nomina_Vendedor__c;
+            inEntregas.Numero_de_Nomina_Ayudante1 = oColab.Numero_de_Nomina_Ayudante1__c;
+            inEntregas.Numero_de_Nomina_Ayudante2 = oColab.Numero_de_Nomina_Ayudante2__c;
+            inEntregas.Numero_de_Nomina_Ayudante3 = oColab.Numero_de_Nomina_Ayudante3__c;
+            inEntregas.Numero_de_Nomina_Ayudante4 = oColab.Numero_de_Nomina_Ayudante4__c;
+          }
+
+          List<prodEntregasCls> tmpProdEntregas = new List<prodEntregasCls>();                    
+          /*for (REP_Producto_Entrega__c oProdEntregas : lsProdEntregas) {
+             if (oProdEntregas.Entrega_de_Pedido_Lk__c == oEntregas.id) {
+                prodEntregasCls inProdEntregas = new prodEntregasCls();
+                inProdEntregas.Id = oProdEntregas.Id;
+                inProdEntregas.Tipo_de_Posicion = oProdEntregas.Tipo_de_Posicion__c;
+                inProdEntregas.Clave_de_Producto = oProdEntregas.Clave_de_Producto__c;
+                inProdEntregas.Cantidad_Entregada = oProdEntregas.Cantidad_Entregada__c;
+                inProdEntregas.UM = oProdEntregas.UM__c;
+                inProdEntregas.Lote_de_Producto = oProdEntregas.Lote_de_Producto__c;
+                inProdEntregas.Forma_de_Pago = oProdEntregas.Forma_de_Pago__c;			
+                tmpProdEntregas.add(inProdEntregas);                
+             }
+          }*/          
+          //System.debug('********** RICA_WS_BajarEntregas********* lsProdEntregas.size() = '+lsProdEntregas.size());
+            if (oEntregas.Tipo_de_Pedido__c != 'ZKA1'){
+            for (Integer i = (lsProdEntregas.size()-1) ; i>= 0 ; i--){
+                REP_Producto_Entrega__c oProdEntregas = lsProdEntregas[i];
+                if (oProdEntregas.Entrega_de_Pedido_Lk__c == oEntregas.id) {
+                	prodEntregasCls inProdEntregas = new prodEntregasCls();
+                	inProdEntregas.Id = oProdEntregas.Id;
+                	inProdEntregas.Tipo_de_Posicion = oProdEntregas.Tipo_de_Posicion__c;
+                	inProdEntregas.Clave_de_Producto = oProdEntregas.Clave_de_Producto__c;
+                    if (oEntregas.Estatus_de_Entrega__c == 'Cancelada' || oEntregas.Estatus_de_Entrega__c == 'En curso'){
+                        inProdEntregas.Cantidad_Entregada = 0;
+                    }else{                        
+                        inProdEntregas.Cantidad_Entregada = oProdEntregas.Cantidad_Entregada__c;
+                    }                	
+                	inProdEntregas.UM = oProdEntregas.UM__c;
+                	inProdEntregas.Lote_de_Producto = oProdEntregas.Lote_de_Producto__c;
+                	inProdEntregas.Forma_de_Pago = oProdEntregas.Forma_de_Pago__c;
+                  	inProdEntregas.Posicion = oProdEntregas.Posicion_SAP_de_Entrega__c;
+                	tmpProdEntregas.add(inProdEntregas);                
+                    lsProdEntregas.remove(i);
+             }
+            }
+            }
+
+          System.debug('********** RICA_WS_BajarEntregas********* lsDevoluciones.size() = '+lsDevoluciones.size());
+            //if (lsIdDevoluciones.contains(oEntregas.id)) {
+            if(oEntregas.Tipo_de_Pedido__c == 'ZKA1'){
+              for (Integer i = (lsDevoluciones.size()-1) ; i>= 0; i--) { REP_Devolucion__c oDevo = lsDevoluciones[i];
+                if (oDevo.Entrega_de_Pedido_Lk__c == oEntregas.Id) { prodEntregasCls inProdEntregas = new prodEntregasCls();
+                  inProdEntregas.Id = oDevo.Id;
+                  inProdEntregas.Clave_de_Producto = oDevo.No_de_Material__r.Name;
+                  inProdEntregas.Cantidad_Entregada = oDevo.Cantidad_a_devolver_CF__c;
+                  inProdEntregas.UM = oDevo.UM__c;
+                  inProdEntregas.Tipo_de_Posicion = 'KAN';
+                  tmpProdEntregas.add(inProdEntregas);                
+                  //lsDevoluciones.remove(i);
+                }
+              }
+            }                   
+
+
+          inEntregas.prodEntregas = tmpProdEntregas;
+          //System.debug('********** RICA_WS_BajarEntregas********* tmpProdEntregas = '+tmpProdEntregas);
+          
+          //Pagos
+          List<pagosCls> tmpPagos = new List<pagosCls>();
+          for (Integer i = (lsPagos.size()-1); i>= 0; i--) {            
+             REP_Pago__c oPagos = lsPagos[i];
+             if (oPagos.Entrega_de_Pedido_Lk__c == oEntregas.Id) {
+                pagosCls inPagos = new pagosCls();
+                inPagos.Id = oPagos.Id;
+                inPagos.Name = oPagos.Name;
+                inPagos.Monto_Total_de_Pedido_Fx = oPagos.Monto_Total_de_Pedido_Fx__c;
+                inPagos.Monto_a_Pagar = oPagos.Monto_a_Pagar__c;
+                inPagos.Fecha_de_Pago = oPagos.Fecha_de_Pago__c;
+                tmpPagos.add(inPagos);
+                
+                //Para toma de consignacion se crea un producto de entrega
+                if(oEntregas.Tipo_de_Pedido__c == 'ZKA1'){ prodEntregasCls inProdEntregas = new prodEntregasCls();
+                 	inProdEntregas.Id = oPagos.Id;
+                 	inProdEntregas.Clave_de_Producto = oPagos.Producto_RICA__r.Name;
+                 	inProdEntregas.Cantidad_Entregada = oPagos.Num_de_Prod_Pagados__c;
+                 	//inProdEntregas.UM = //oDevo.UM__c;
+                    inProdEntregas.Tipo_de_Posicion = 'KEN';	
+                 	tmpProdEntregas.add(inProdEntregas);                  	
+            	}                 
+                 
+                lsPagos.remove(i);
+             }
+          }          
+          //System.debug('********** RICA_WS_BajarEntregas********* tmpPagos = '+tmpPagos);          
+          inEntregas.pagos = tmpPagos;
+          //System.debug('********** RICA_WS_BajarEntregas********* inEntregas = '+inEntregas);
+          tmpEntregas.add(inEntregas);                              
+        }
+        //System.debug('********** RICA_WS_BajarEntregas********* tmpEntregas = '+tmpEntregas);
+
+        //Operacion del dia 
+        List<operacionRutaCls> tmpOperacion = new List<operacionRutaCls>(); 
+        for (REP_Operacion_de_Reparto__c oOperacionR : lsOperacionReparto) {
+          operacionRutaCls inOperacion = new operacionRutaCls();
+          inOperacion.Id = oOperacionR.Id;
+          String[] nameOpera = oOperacionR.Name.split('-');
+          if (nameOpera.size() > 0) {
+             inOperacion.werks = nameOpera[1];
+             inOperacion.vkgrp = nameOpera[2];            
+          }
+          inOperacion.fechaOperacion = oOperacionR.Fecha_de_Operacion__c;
+          //System.debug('********** RICA_WS_BajarEntregas********* tmpProdInventario = '+oOperacionR.Colaboradores_en_Ruta__r);
+          if (oOperacionR.Colaboradores_en_Ruta__r.size() > 0) { inOperacion.Numero_de_Nomina_Vendedor = oOperacionR.Colaboradores_en_Ruta__r[0].Numero_de_Nomina_Vendedor__c;
+          }
+
+          List<prodInventarioCls> tmpProdInventario = new List<prodInventarioCls>();
+          for (REP_Prod_de_Inventario_Final__c oInventario : lsInventario) {
+            if (oInventario.Operacion_de_Reparto_Lk__c == oOperacionR.Id) {
+                prodInventarioCls inProdInventario = new prodInventarioCls();
+  		          inProdInventario.Id = oInventario.Id;
+			          inProdInventario.Codigo_de_Producto = oInventario.Producto_RICA_Lk__r.Name;                  
+                inProdInventario.Devolucion_en_Caja = oInventario.Devolucion_en_Caja__c;
+                inProdInventario.Devolucion_en_Pza_Bot = oInventario.Devolucion_en_Pza_Bot__c;
+                tmpProdInventario.add(inProdInventario);
+            }
+          }          
+          //System.debug('********** RICA_WS_BajarEntregas********* tmpProdInventario = '+tmpProdInventario);
+          inOperacion.prodInventario = tmpProdInventario;          
+          //System.debug('********** RICA_WS_BajarEntregas********* tmpProdInventario = '+tmpProdInventario);
+          tmpOperacion.add(inOperacion);  
+        }
+
+        
+        response.entregas = tmpEntregas;
+        response.operacionRuta = tmpOperacion;
+        }else{
+         response.MSG = 'No se encuentra Operacion del dia con Cierre de Entregas';    
+        }
+        //tmpEntregas = null;
+      }else{
+            response.MSG = 'No se Encontraron Entregas';
+      }           
+    }catch(Exception e){
+            System.debug('Mensaje de error: ' + e.getMessage());
+            System.debug('Linea: ' + e.getLineNumber());
+            response.MSG = 'Mensaje de error: ' + e.getMessage() + ', Linea: ' + e.getLineNumber();
+    }
+    return response;
+  }
+
+  public static Date obtieneFecha(String fecha){
+        Integer anio = Integer.valueOf(fecha.substring(0,4));
+        Integer mes = Integer.valueOf(fecha.substring(5, 7));
+        Integer dia = Integer.valueOf(fecha.substring(8));
+        Date dFecha = Date.newInstance(anio, mes, dia);
+        return dFecha;
+  }
+  global class response{
+        public List<entregasCls> entregas;
+        public List<operacionRutaCls> operacionRuta;
+        public String MSG;
+        public Integer MORE;
+  }
+
+  public class entregasCls{
+      //Entrega
+      public String Id;
+      public String Tipo_de_Registro;
+      public String Folio_de_Entrega_SAP;
+      public String Name;
+      public String Motivo_de_Cancelacion;
+      public Date Fecha_de_Entrega;
+      public String Tipo_de_Pedido;
+      public String Folio_Factura_SAP;
+      public Decimal Total_a_Pagar;
+      public String Clave_Promocion_SAP;
+      public Date Fecha_de_Preventa;
+      public String Estatus_de_Entrega;
+      //Ruta_de_Cliente
+      public String IdRutaClt;
+      public String werks;
+      public String vkgrp;
+      public String Cuenta_Name_Unico_Fx;
+      public String Metodo_de_Pago_Principal;
+      //Conexion
+      public Datetime Fecha_Hora_In;
+      //Colaborador en Ruta
+      public String IdColaborador;
+      public Decimal Numero_de_Nomina_Vendedor;
+      public Decimal Numero_de_Nomina_Ayudante1;
+      public Decimal Numero_de_Nomina_Ayudante2;
+      public Decimal Numero_de_Nomina_Ayudante3;
+      public Decimal Numero_de_Nomina_Ayudante4;
+      //Productos de Entrega
+      public List<prodEntregasCls> prodEntregas;
+	  public List<pagosCls> pagos;      
+  }
+
+  public class operacionRutaCls{
+    public String Id;
+    public String werks;
+    public String vkgrp;
+    public Decimal Numero_de_Nomina_Vendedor;
+    public Date fechaOperacion;
+    //Productos de Inventario
+    public List<prodInventarioCls> prodInventario;    
+  }
+
+    public class prodEntregasCls{
+      public String Id;
+      public String Tipo_de_Posicion;
+      public String Clave_de_Producto;
+      public Decimal Cantidad_Entregada;
+      public String UM;
+      public String Lote_de_Producto;
+      public String Forma_de_Pago;
+      public Decimal Posicion;
+    }
+
+    public class prodInventarioCls{
+      public String Id;
+      public String Codigo_de_Producto;
+      public Decimal Devolucion_en_Caja;
+      public Decimal Devolucion_en_Pza_Bot;
+    }
+    
+    public class pagosCls{
+        public String Id;
+        public String Name;
+        public Decimal Monto_Total_de_Pedido_Fx;
+        public Decimal Monto_a_Pagar;
+        public Date Fecha_de_Pago;
+    }
+}
