@@ -1,0 +1,165 @@
+@isTest
+public class RICA_WS_Consignaciones_tst {
+    
+    @isTest static void TestConsg(){
+        List<RICA_WS_Consignaciones.consCls> lstInCons = new List<RICA_WS_Consignaciones.consCls>();
+        List<RICA_WS_Consignaciones.prodConsCls> lstInProdCons = new List<RICA_WS_Consignaciones.prodConsCls>();
+        
+        
+        RICA_WS_Consignaciones.consCls oCons = new RICA_WS_Consignaciones.consCls();
+        RICA_WS_Consignaciones.prodConsCls oProd = new RICA_WS_Consignaciones.prodConsCls();
+        
+        String sfecha;
+        List<String> lsInRutas = new List<String>();
+        List<String> lsIdEntregas = new List<String>();
+        Datetime fechaHora = System.now();
+        string fechaMod = fechaHora.format();
+        Date fecha = date.newinstance(fechaHora.year(), fechaHora.month(), fechaHora.day());
+        sfecha = fechaHora.format('yyyy-MM-dd');
+        lsInRutas.add('9999-999%');
+        lsInRutas.add('Test%');
+        lsIdEntregas.add('12345678id');
+        
+        Date FechaHoy = obtieneFecha(sfecha);
+        
+        Canal__c oCanal = Test_DataCanal_tst.crearCanal_NameDescOpDescSAP_Clave( 'NameTest', 'Desc.Test', 'Desc.SAP Test','88' );
+        Account cuentaTest=Test_DataAccount_tst.crearCuentaNPF();
+        System.Debug( '******** cuentaTest  '+ cuentaTest );
+        System.Debug( '******** oCanal  '+ oCanal );
+        cuentaTest.Canal_de_Distribucion_lk__c = oCanal.Id;
+        Update cuentaTest;
+        Sucursal__c oSucursal = Test_DataSucursal_tst.crearSucName5caract('9999');
+        Ruta_de_Sucursal__c RutaSuc = Test_DataRutaSuc_tst.newRtScName_idSc_sScNmCorto_idCanal_Reparto( '999', oSucursal.Id, '999' , oCanal.Id );        
+        System.Debug( '******** RutaSuc  '+ RutaSuc );
+        
+        List<Ruta__c > lstRuta = new List<Ruta__c >([ SELECT Id, Name, Name_Unico__c, Sucursal_Lk__c, Canal_distribucion__c FROM Ruta__c WHERE Ruta_de_Sucursal__c =  : RutaSuc.Id  ]);
+        System.Debug( '******** lstRuta  '+ lstRuta );
+        Ruta__c rutaTest = new Ruta__c ();
+        if ( lstRuta.size() > 0  )
+        {
+            rutaTest = lstRuta[0];
+        }
+        
+        System.Debug( '******** rutaTest  '+ rutaTest );
+        rutaTest.Canal_distribucion__c = oCanal.Id;
+        update rutaTest;
+        cuentaTest.Sucursal__c = rutaTest.Sucursal_Lk__c;
+        update cuentaTest;
+        System.Debug( '******** cuentaTest  '+ cuentaTest );
+
+        List<Sucursal__c > lstSucursales = new List<Sucursal__c >([ SELECT Id, Name, Name_Unico__c FROM Sucursal__c WHERE Id =  : rutaTest.Sucursal_Lk__c  ]);
+        System.Debug( '******** lstSucursales  '+ lstSucursales );
+        Sucursal__c sucursalTest = new Sucursal__c ();
+        if ( lstSucursales.size() > 0  )
+        {
+            sucursalTest = lstSucursales[0];
+        }
+
+        REP_Unidad__c unidadRutaTest =  Test_Data_UnidadesDeRuta_tst.creaUnidadRuta( sucursalTest, oCanal );
+
+        System.Debug( '******** unidadRutaTest  '+ unidadRutaTest );
+
+        //Ruta_de_Cliente__c rutaClienteTest = Test_Data_RutaCliente_tst.crearRutaCiente( cuentaTest.Id , rutaTest.Id  );		
+		//Ruta_de_Cliente__c rutaClienteTest = Test_Data_RutaCliente_tst.crearRCte_oAccount_oRuta(cuentaTest, rutaTest);
+		//System.debug('**********Consignaciones************ '+ rutaClienteTest);
+        //System.debug('**********Consignaciones************ '+ rutaClienteTest.Activa_por_Vigencia_Fx__c);        
+       	Ruta_de_Cliente__c rutaClienteTest = new Ruta_de_Cliente__c();
+        Ruta_de_Cliente__c rutaClienteTest2 = new Ruta_de_Cliente__c();
+        rutaClienteTest.Cuenta_Lk__c = cuentaTest.Id;
+        rutaClienteTest.Ruta_M__c = rutaTest.Id;        
+        rutaClienteTest.Lunes__c = true;
+        rutaClienteTest.Martes__c = true;
+        rutaClienteTest.Miercoles__c = true;
+        rutaClienteTest.Jueves__c = true;
+        rutaClienteTest.Viernes__c = true;
+        rutaClienteTest.Sabado__c = true;
+        rutaClienteTest.Name_Unico__c = '9999-999-99999';        
+        rutaClienteTest.Activa__c = TRUE;
+        Date fechai = fecha.addDays(-30);
+        Date fechaf = fecha.addDays(30);        
+		rutaClienteTest.Fecha_Inicio__c =  system.today();
+        rutaClienteTest.Fecha_Fin__c = system.today();
+        Insert rutaClienteTest;
+        System.Debug( '******** rutaClienteTest  '+ rutaClienteTest );
+        List<Ruta_de_Cliente__c> lstRtaClete = new List<Ruta_de_Cliente__c >([SELECT Id, Name, Name_Unico__c, Activa_por_Vigencia_Fx__c FROM Ruta_de_Cliente__c WHERE Id =: rutaClienteTest.Id]);
+        System.Debug( '******** rutaClienteTest  '+ lstRtaClete );
+       	if ( lstRtaClete.size() > 0  )
+        {
+            rutaClienteTest2 = lstRtaClete[0];
+        }        
+        System.Debug( '******** rutaClienteTest  '+ rutaClienteTest2 );
+        
+        PRV_Portafolio__c oPort = new PRV_Portafolio__c();
+        oPort.Name = 'CHICO';
+        oPort.ID_Portafolio__c = '999-99999';
+        insert oPort;
+        System.debug('******PRV_Portafolio__c = '+ oPort );
+        
+        Producto_RICA__c oProd2 = new Producto_RICA__c();
+        oProd2.Name = '800001';
+        oProd2.Codigo_de_Producto__c = '800001';
+        insert oProd2;
+        System.debug('******Producto_RICA__c = '+oProd2);
+        
+        PRV_Prod_de_Portafolio__c oProdPort = new PRV_Prod_de_Portafolio__c();
+		oProdPort.Name = '800001';
+        oProdPort.Clave_Portafolio_SAP__c = '999-99999';
+		oProdPort.Name_Unico__c = '999-99999-800001';
+        insert oProdPort;
+        
+        System.debug('**********Consignaciones************ '+ rutaClienteTest2);
+        System.debug('**********Consignaciones************ '+ rutaClienteTest2.Activa_por_Vigencia_Fx__c);
+        
+        oCons.ENTREGA = '12345';
+        oCons.RUTA_CTE = rutaClienteTest2.Name_Unico__c;
+        oCons.FECHAI = '2019-01-01';
+        oCons.ETAPA = 'Solicitud_Aprobada';
+        oCons.FECHAS = '2019-01-02';
+        oCons.ACTIVO = TRUE;
+        oCons.FECHAF = '2019-01-02';
+        
+        oProd.ENTREGA = '12345';
+        oProd.PROD_CON = '12345-800001';
+        oProd.PROD_PORT = '999-99999-800001';
+        oProd.MATNR = '800001';
+        oProd.CANTIDAD = 1.00;
+        oProd.PRECIO = 10.00;
+        oProd.IVA = 1.00;
+        oProd.IEPS = 1.00;
+        
+       	lstInCons.add(oCons);
+        lstInProdCons.add(oProd);
+        RICA_WS_Consignaciones.doPut(lstInCons, lstInProdCons);
+        
+    }
+    
+    public static Date obtieneFecha(String fecha){
+        Integer anio = Integer.valueOf(fecha.substring(0,4));
+        Integer mes = Integer.valueOf(fecha.substring(5, 7));
+        Integer dia = Integer.valueOf(fecha.substring(8));
+        Date dFecha = Date.newInstance(anio, mes, dia);
+        return dFecha;
+  }
+    
+    public class consCls2{
+    public String ENTREGA;  //Entrega   Name_Unico__c   Name_Unico__c
+    public String RUTA_CTE; //Ruta de Cliente (Centro-Ruta-Cliente)   No_de_Ruta__c
+    public String   FECHAI;   //Fecha de inicio   Fecha_Inicio__c
+    public String ETAPA;    //Etapa de Solicitud    Etapa_de_Solicitud__c
+    public String   FECHAS;   //Fecha de Solicitud    Fecha_de_Solicitud__c
+    public Boolean ACTIVO;   //Activo    Activo__c
+    public String   FECHAF;   //Fecha Fin     Fecha_Fin__c
+  }
+
+  public class prodConsCls2{
+    public String ENTREGA;    //Entrega   Name_Unico__c
+    public String PROD_CON;   //Name unico ID_UNICO__c
+    public String PROD_PORT;  //Producto de Portafolio Clave (RUTA-CLIENTE-MATERIAL) Producto_de_Portafolio_Lk__c
+    public String MATNR;      //Material  Producto_RICA_M__c
+    public Decimal CANTIDAD;  //Cantidad Cantidad_de_cajas__c
+    public Decimal PRECIO;    //Precio  Precio_Unitario__c
+    public Decimal IVA;       //IVA   Monto_Iva_Prod_Consignacion__c
+    public Decimal IEPS;      //IEPS  Monto_IEPS_Prod_Consignacion__c    
+  }
+
+}
