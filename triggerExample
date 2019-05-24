@@ -1,0 +1,69 @@
+trigger PRV_ProdPort_trg on PRV_Prod_de_Portafolio__c (before insert, before update) {
+    try
+    {        
+        
+//Declaraciones
+
+    Set<String> setNumPortafoliosSAP=new Set<String>(); //Donde se guardan los numeros de portafolios SAP
+    Map<String,Id> map_PortafoliosSAP=new Map<String,Id>();//Donde se guardan los <Numero de Portafolio SAP, ID objeto Portafolio>
+    Set<String> setNumProductosAll= new Set<String>();//Se almacenan todos los Id de productos a utilizar
+    Map<String,Id> mapProductoRicaAll=new Map<String,Id>();
+    Map<Id,Producto_RICA__c> mapProductoRica=new Map<Id,Producto_RICA__c>();
+
+    //Entra en el trigger
+    System.debug('::ENTRO TRIGGER');          
+    if(Trigger.isInsert&&Trigger.isBefore){
+        for(PRV_Prod_de_Portafolio__c proPort : Trigger.new){
+            if(proPort.Clave_Portafolio_SAP__c!=null){
+                String[] numPort = proPort.Clave_Portafolio_SAP__c.split('-'); //numPort [0] = Numero de Portafolio SAP [1] = Pusicion en Portafolio SAP
+                setNumPortafoliosSAP.add(numPort[0] + '-' + numPort[1]);//Se almacenan  los numero de Portafolios SAP
+                setNumProductosAll.add(proPort.Name);//Nos traemos el numero de material
+            }else{
+                setNumProductosAll.add(proPort.Name);//Nos traemos el numero de material
+            }
+        }
+    }        
+    System.debug('##############Set de ID_Portafolio__c  '+setNumPortafoliosSAP);
+    System.debug('##############Set de Producto_RICA__c  '+setNumProductosAll);
+
+    //Nos traemos todos los ID de Portafolios respecto al Set de Numeros de Portafolios SAP
+    for(PRV_Portafolio__c PortafolioSAP:[SELECT Id, ID_Portafolio__c FROM PRV_Portafolio__c 
+                                        WHERE ID_Portafolio__c IN: setNumPortafoliosSAP LIMIT 10000]){
+        map_PortafoliosSAP.put(PortafolioSAP.ID_Portafolio__c, PortafolioSAP.Id);
+    }
+    System.debug('##############Map de map_PortafoliosSAP  '+map_PortafoliosSAP);
+
+    //Nos traemos los Productos respecto al Set de setNumProductosAll
+    for(Producto_RICA__c prodRica:[SELECT Id, Codigo_de_Producto__c FROM Producto_RICA__c 
+                                        WHERE  Codigo_de_Producto__c IN: setNumProductosAll LIMIT 10000]){
+        mapProductoRicaAll.put(prodRica.Codigo_de_Producto__c, prodRica.Id);
+    }
+    System.debug('##############Map de mapProductoRicaAll  '+mapProductoRicaAll);
+
+    //Asignamos al campo Principal-Detalle el Id de Portafolio de acuerdo al MAP map_PortafoliosSAP 
+    if((Trigger.isInsert&&Trigger.isBefore)){
+        for(PRV_Prod_de_Portafolio__c proPort : Trigger.new){
+            if(proPort.Clave_Portafolio_SAP__c != null){
+                String[] numPort2 = proPort.Clave_Portafolio_SAP__c.split('-');
+                if(map_PortafoliosSAP.containsKey(numPort2[0] + '-' + numPort2[1])){
+                    proPort.ID_Portafolio__c = map_PortafoliosSAP.get(numPort2[0] + '-' + numPort2[1]);
+                }
+            }
+            if(mapProductoRicaAll.containsKey(proPort.Name)){
+                proPort.Producto_RICA_M__c = mapProductoRicaAll.get(proPort.Name);
+            }
+            //XXXXX Ayuda a identificar Errores
+            if(proPort.ID_Portafolio__c==null) {
+                System.debug('****No se Encuentra ID_Portafolio__c**** = '+proPort);
+            }
+            if(proPort.Producto_RICA_M__c==null){
+                System.debug('****No se Encuentra Producto_RICA_M__c**** = '+proPort);
+            }
+        }
+    }
+//*****************************************************************************************************                  
+        
+        
+            
+    } catch (Exception error) {for (PRV_Prod_de_Portafolio__c e : (Trigger.isBefore && Trigger.isDelete) ? Trigger.old:Trigger.new) {e.addError('Por favor contacta a soporte y menciona el trigger PRV_Prod_de_Portafolio__c : '+error.getMessage());}}
+}
